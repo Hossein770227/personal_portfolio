@@ -1,34 +1,35 @@
-version: '3.9'
-
 services:
   web:
     build: .
     command: python /code/manage.py runserver 0.0.0.0:8000
     volumes:
-      - .:/code  
+      - .:/code
     ports:
-      - 8000:8000
-
+      - "8000:8000"
     env_file:
-      - .env 
-      
+      - .env
     environment:
-      - "DATABASE_NAME=${DATABASE_NAME}"
-      - "DATABASE_USER=${DATABASE_USER}"
-      - "DATABASE_PASSWORD=${DATABASE_PASSWORD}"
-      - "DATABASE_HOST=${DATABASE_HOST}"
-      - "DATABASE_PORT=${DATABASE_PORT}"
-      - "DJANGO_SECRET_KEY=${DOCKER_COMPOSE_DJANGO_SECRET_KEY}"
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_HOST: db
+      DATABASE_PORT: ${DATABASE_PORT}
+      DJANGO_SECRET_KEY: ${DOCKER_COMPOSE_DJANGO_SECRET_KEY}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
-    image: postgres:14
+    image: postgres:16
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: PASSWORD
-      POSTGRES_DB: portfolio
-      
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - db_data:/var/lib/postgresql/data
 
