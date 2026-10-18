@@ -27,7 +27,7 @@ services:
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: PASSWORD
-      POSTGRES_DB: authentication
+      POSTGRES_DB: portfolio
       
     volumes:
       - db_data:/var/lib/postgresql/data
