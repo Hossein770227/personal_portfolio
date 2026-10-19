@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 import os
 from pathlib import Path
+import socket
 from environs import Env
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -45,6 +46,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # apps
     'accounts',
+
+    'debug_toolbar',
 ]
 
 MIDDLEWARE = [
@@ -55,6 +58,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -62,7 +66,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS':  [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -113,12 +117,10 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
+LANGUAGE_CODE = 'fa'
+TIME_ZONE = 'Asia/Tehran'
 USE_I18N = True
-
+USE_L10N = True
 USE_TZ = True
 
 
@@ -138,3 +140,29 @@ MAILERS = {
 }
 
 AUTH_USER_MODEL = "accounts.MyUser"
+
+LANGUAGES = (
+    ("en", ("English")),
+    ("fa", ("persian")),
+)
+
+
+
+# DJANGO_DEBUG
+if DEBUG:
+    INTERNAL_IPS = ["127.0.0.1"]
+
+    try:
+        _, _, ips = socket.gethostbyname_ex(socket.gethostname())
+        INTERNAL_IPS += [
+            ".".join(ip.split(".")[:-1]) + ".1"
+            for ip in ips
+            if ip.count(".") == 3
+        ]
+    except OSError:
+        pass
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
