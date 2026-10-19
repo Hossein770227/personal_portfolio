@@ -1,3 +1,4 @@
+
 from datetime import timedelta
 
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
@@ -9,6 +10,8 @@ from .managers import MyUserManager
 from .validator import validate_iranian_phone
 
 
+def get_expire_time():
+    return timezone.now() + timedelta(minutes=2)
 
 
 class MyUser(AbstractBaseUser, PermissionsMixin):
@@ -16,7 +19,6 @@ class MyUser(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("phone number"),
         max_length=13,
         unique=True,
-        db_index=True,
         validators=[validate_iranian_phone],
     )
     full_name = models.CharField(
@@ -44,40 +46,54 @@ class MyUser(AbstractBaseUser, PermissionsMixin):
         return cls.objects.filter(phone_number=phone_number).first()
 
 
-def get_expire_time():
-    return timezone.now() + timedelta(minutes=2)
-
-
 class OtpCode(models.Model):
+    class Purpose(models.TextChoices):
+        REGISTRATION = "registration", _("Registration")
+        PASSWORD_RESET = "password_reset", _("Password reset")
+
     phone_number = models.CharField(
-        verbose_name="phone number",
+        verbose_name=_("phone number"),
         max_length=13,
-        db_index=True,
         validators=[validate_iranian_phone],
     )
+
     code = models.CharField(
-        verbose_name="verification code",
-        max_length=6,
+        verbose_name=_("verification code hash"),
+        max_length=128,
     )
+
+    purpose = models.CharField(
+        verbose_name=_("purpose"),
+        max_length=20,
+        choices=Purpose.choices,
+        db_index=True,
+    )
+
+    attempts = models.PositiveSmallIntegerField(default=0)
+
     date_time_created = models.DateTimeField(
         auto_now_add=True,
         db_index=True,
     )
+
     expire_time = models.DateTimeField(
         default=get_expire_time,
         db_index=True,
     )
 
     class Meta:
-        verbose_name = _("otp code")
-        verbose_name_plural = _("otp codes")
+        verbose_name = _("OTP code")
+        verbose_name_plural = _("OTP codes")
         ordering = ["-date_time_created"]
         indexes = [
-            models.Index(fields=["phone_number", "code"]),
+            models.Index(
+                fields=["phone_number", "purpose", "date_time_created"],
+                name="otp_phone_purpose_created_idx",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.phone_number}: {self.code}"
+        return f"{self.phone_number} - {self.purpose}"
 
     @property
     def is_expired(self):
@@ -85,5 +101,6 @@ class OtpCode(models.Model):
 
     @classmethod
     def delete_expired(cls):
-        cls.objects.filter(expire_time__lt=timezone.now()).delete()
-
+        return cls.objects.filter(
+            expire_time__lte=timezone.now()
+        ).delete()

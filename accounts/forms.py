@@ -1,14 +1,14 @@
+
 from django import forms
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.forms import (
     ReadOnlyPasswordHashField,
-    UserCreationForm as BaseUserCreationForm,
     UserChangeForm as BaseUserChangeForm,
+    UserCreationForm as BaseUserCreationForm,
 )
-
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import RegexValidator
 from django.utils.translation import gettext_lazy as _
 
 from .validator import validate_iranian_phone
@@ -17,6 +17,8 @@ User = get_user_model()
 
 
 class UserCreationForm(BaseUserCreationForm):
+    """Django Admin user creation form."""
+
     class Meta:
         model = User
         fields = ("phone_number", "full_name")
@@ -25,19 +27,22 @@ class UserCreationForm(BaseUserCreationForm):
         password1 = self.cleaned_data.get("password1")
         password2 = self.cleaned_data.get("password2")
 
-        if password1 and password2 and password1 != password2:
+        if not password1 or not password2:
+            return password2
+
+        if password1 != password2:
             raise ValidationError(_("Passwords do not match."))
 
-        validate_password(password2)
-
+        validate_password(password2, self.instance)
         return password2
 
 
 class UserChangeForm(BaseUserChangeForm):
+    """Django Admin user change form."""
+
     password = ReadOnlyPasswordHashField(
         help_text=_(
-            "You can change the password using this "
-            "<a href='../password/'>form</a>."
+            "You can change the password using the password change form."
         )
     )
 
@@ -69,22 +74,25 @@ class UserRegisterForm(forms.Form):
     full_name = forms.CharField(
         label=_("Full name"),
         max_length=100,
+        strip=True,
     )
 
     phone = forms.CharField(
         label=_("Phone number"),
-        max_length=11,
+        max_length=13,
         validators=[validate_iranian_phone],
     )
 
     password1 = forms.CharField(
         label=_("Password"),
-        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+        widget=forms.PasswordInput,
     )
 
     password2 = forms.CharField(
         label=_("Confirm password"),
-        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+        widget=forms.PasswordInput,
     )
 
     def clean_phone(self):
@@ -99,49 +107,57 @@ class UserRegisterForm(forms.Form):
         password1 = self.cleaned_data.get("password1")
         password2 = self.cleaned_data.get("password2")
 
-        if password1 and password2 and password1 != password2:
+        if not password1 or not password2:
+            return password2
+
+        if password1 != password2:
             raise ValidationError(_("Passwords do not match."))
 
         validate_password(password2)
-
         return password2
 
 
 class VerifyCodeForm(forms.Form):
-    code = forms.IntegerField(
+    code = forms.CharField(
         label=_("Verification code"),
+        min_length=4,
+        max_length=4,
+        strip=True,
         validators=[
-            MinValueValidator(1000),
-            MaxValueValidator(9999),
+            RegexValidator(
+                regex=r"^\d{4}$",
+                message=_("Enter a valid four-digit verification code."),
+            )
         ],
+        widget=forms.TextInput(
+            attrs={
+                "inputmode": "numeric",
+                "autocomplete": "one-time-code",
+                "maxlength": "4",
+            }
+        ),
     )
 
 
 class ForgotPasswordForm(forms.Form):
     phone_number = forms.CharField(
         label=_("Phone number"),
-        max_length=11,
+        max_length=13,
         validators=[validate_iranian_phone],
     )
-
-    def clean_phone_number(self):
-        phone = self.cleaned_data["phone_number"]
-
-        if not User.objects.filter(phone_number=phone).exists():
-            raise ValidationError(_("This phone number does not exist."))
-
-        return phone
 
 
 class ResetPasswordForm(forms.Form):
     new_password1 = forms.CharField(
         label=_("New password"),
-        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+        widget=forms.PasswordInput,
     )
 
     new_password2 = forms.CharField(
         label=_("Confirm new password"),
-        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+        widget=forms.PasswordInput,
     )
 
     def clean(self):
@@ -150,25 +166,31 @@ class ResetPasswordForm(forms.Form):
         password1 = cleaned_data.get("new_password1")
         password2 = cleaned_data.get("new_password2")
 
-        if password1 and password2:
-            if password1 != password2:
-                raise ValidationError(_("The passwords must match."))
+        if not password1 or not password2:
+            return cleaned_data
 
-            validate_password(password1)
+        if password1 != password2:
+            self.add_error(
+                "new_password2",
+                _("The passwords must match."),
+            )
+            return cleaned_data
 
+        validate_password(password1)
         return cleaned_data
 
 
 class PhoneLoginForm(forms.Form):
     phone_number = forms.CharField(
         label=_("Phone number"),
-        max_length=11,
+        max_length=13,
         validators=[validate_iranian_phone],
     )
 
     password = forms.CharField(
         label=_("Password"),
-        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+        widget=forms.PasswordInput,
     )
 
     def clean(self):
@@ -179,6 +201,7 @@ class PhoneLoginForm(forms.Form):
 
         if phone_number and password:
             self.user_cache = authenticate(
+                self.request,
                 phone_number=phone_number,
                 password=password,
             )
@@ -189,6 +212,11 @@ class PhoneLoginForm(forms.Form):
                 )
 
         return cleaned_data
+
+    def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop("request", None)
+        self.user_cache = None
+        super().__init__(*args, **kwargs)
 
     def get_user(self):
         return self.user_cache

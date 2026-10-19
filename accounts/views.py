@@ -1,22 +1,24 @@
-import random
 
-from django.contrib import messages
-from django.contrib.auth import (
-    get_user_model,
-    login,
-    logout,
-    update_session_auth_hash,
-)
+import secrets
+from datetime import timedelta
+
+from django.conf import settings
+from django.contrib.auth import get_user_model, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.hashers import check_password, make_password
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import F
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
+from django.contrib import messages
 from django.views import View
 
 from utils import send_otp_code
-
 from .forms import (
     ForgotPasswordForm,
     PhoneLoginForm,
@@ -28,28 +30,46 @@ from .models import OtpCode
 
 User = get_user_model()
 
+OTP_MAX_ATTEMPTS = 5
+OTP_RESEND_SECONDS = 120
+OTP_SESSION_SECONDS = 300
 
-def create_otp(phone_number):
-    """
-    Delete old OTPs, create a new one and send it.
-    """
-    OtpCode.objects.filter(phone_number=phone_number).delete()
 
-    code = random.randint(1000, 9999)
+def create_otp(phone_number, purpose):
+    now = timezone.now()
 
-    send_otp_code(phone_number, code)
-
-    return OtpCode.objects.create(
+    recent_otp = OtpCode.objects.filter(
         phone_number=phone_number,
-        code=code,
+        purpose=purpose,
+        date_time_created__gte=now - timedelta(seconds=OTP_RESEND_SECONDS),
+    ).exists()
+
+    if recent_otp:
+        return False
+
+    code = f"{secrets.randbelow(9000) + 1000}"
+
+    otp = OtpCode.objects.create(
+        phone_number=phone_number,
+        purpose=purpose,
+        code=make_password(code),
     )
 
+    try:
+        send_otp_code(phone_number, code)
+    except Exception:
+        otp.delete()
+        raise
 
-def get_valid_otp(phone_number):
+    return True
 
+
+def get_valid_otp(phone_number, purpose):
     otp = (
-        OtpCode.objects
-        .filter(phone_number=phone_number)
+        OtpCode.objects.filter(
+            phone_number=phone_number,
+            purpose=purpose,
+        )
         .order_by("-date_time_created")
         .first()
     )
@@ -61,49 +81,83 @@ def get_valid_otp(phone_number):
     return otp
 
 
+def verify_otp(otp, submitted_code):
+    if otp is None or otp.is_expired or otp.attempts >= OTP_MAX_ATTEMPTS:
+        return False
+
+    with transaction.atomic():
+        locked_otp = OtpCode.objects.select_for_update().filter(pk=otp.pk).first()
+
+        if (
+            locked_otp is None
+            or locked_otp.is_expired
+            or locked_otp.attempts >= OTP_MAX_ATTEMPTS
+        ):
+            return False
+
+        if check_password(str(submitted_code), locked_otp.code):
+            return True
+
+        OtpCode.objects.filter(pk=locked_otp.pk).update(
+            attempts=F("attempts") + 1
+        )
+        return False
+
+
+def safe_next_url(request):
+    candidate = request.POST.get("next") or request.GET.get("next")
+
+    if candidate and url_has_allowed_host_and_scheme(
+        candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+
+    return reverse("website:home")
+
+
 class UserRegisterView(View):
     form_class = UserRegisterForm
     template_name = "accounts/user_register.html"
 
     def get(self, request):
-        return render(
-            request,
-            self.template_name,
-            {"form": self.form_class()},
-        )
+        return render(request, self.template_name, {"form": self.form_class()})
 
     def post(self, request):
         form = self.form_class(request.POST)
 
         if not form.is_valid():
-            return render(
-                request,
-                self.template_name,
-                {"form": form},
-            )
+            return render(request, self.template_name, {"form": form})
 
         phone = form.cleaned_data["phone"]
 
-        if get_valid_otp(phone):
-            messages.error(
-                request,
-                _("We already sent you a code. Please wait."),
-            )
+        if User.objects.filter(phone_number=phone).exists():
+            form.add_error("phone", _("This phone number already exists."))
+            return render(request, self.template_name, {"form": form})
+
+        if get_valid_otp(phone, "registration"):
+            messages.error(request, _("A code was already sent. Please wait."))
             return redirect("accounts:verify_code")
 
-        create_otp(phone)
+        try:
+            sent = create_otp(phone, "registration")
+        except Exception:
+            messages.error(request, _("Could not send the verification code."))
+            return render(request, self.template_name, {"form": form})
+
+        if not sent:
+            messages.error(request, _("Please wait before requesting another code."))
+            return redirect("accounts:user_register")
 
         request.session["user_registration_info"] = {
             "phone_number": phone,
             "full_name": form.cleaned_data["full_name"],
-            "password": form.cleaned_data["password2"],
+            "password_hash": make_password(form.cleaned_data["password2"]),
         }
+        request.session.set_expiry(OTP_SESSION_SECONDS)
 
-        messages.success(
-            request,
-            _("Verification code sent successfully."),
-        )
-
+        messages.success(request, _("Verification code sent successfully."))
         return redirect("accounts:verify_code")
 
 
@@ -112,72 +166,47 @@ class UserRegisterCodeView(View):
     template_name = "accounts/verify_code.html"
 
     def get(self, request):
-        if "user_registration_info" not in request.session:
-            messages.error(
-                request,
-                _("Registration information not found."),
-            )
+        if not request.session.get("user_registration_info"):
             return redirect("accounts:user_register")
 
-        return render(
-            request,
-            self.template_name,
-            {"form": self.form_class()},
-        )
+        return render(request, self.template_name, {"form": self.form_class()})
 
     def post(self, request):
-        user_data = request.session.get("user_registration_info")
-
-        if not user_data:
-            messages.error(
-                request,
-                _("Registration information not found."),
-            )
+        data = request.session.get("user_registration_info")
+        if not data:
+            messages.error(request, _("Registration session expired."))
             return redirect("accounts:user_register")
 
         form = self.form_class(request.POST)
-
         if not form.is_valid():
-            return render(
-                request,
-                self.template_name,
-                {"form": form},
+            return render(request, self.template_name, {"form": form})
+
+        with transaction.atomic():
+            otp = get_valid_otp(data["phone_number"], "registration")
+
+            if not verify_otp(otp, form.cleaned_data["code"]):
+                messages.error(request, _("Invalid or expired code."))
+                return redirect("accounts:verify_code")
+
+            if User.objects.filter(phone_number=data["phone_number"]).exists():
+                messages.error(request, _("This phone number already exists."))
+                return redirect("accounts:user_register")
+
+            user = User(
+                phone_number=data["phone_number"],
+                full_name=data["full_name"],
             )
+            user.password = data["password_hash"]
+            user.save()
 
-        otp = get_valid_otp(user_data["phone_number"])
-
-        if otp is None:
-            messages.error(
-                request,
-                _("The OTP code has expired."),
-            )
-            return redirect("accounts:user_register")
-
-        if str(form.cleaned_data["code"]) != str(otp.code):
-            messages.error(
-                request,
-                _("The entered code is incorrect."),
-            )
-            return redirect("accounts:verify_code")
-
-        user = User.objects.create_user(
-            phone_number=user_data["phone_number"],
-            full_name=user_data["full_name"],
-            password=user_data["password"],
-        )
-
-        otp.delete()
+            otp.delete()
 
         request.session.pop("user_registration_info", None)
-
         login(request, user)
 
-        messages.success(
-            request,
-            _("You have successfully registered."),
-        )
-
+        messages.success(request, _("Registration completed successfully."))
         return redirect("website:home")
+
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -187,156 +216,90 @@ def login_view(request):
 
     if request.method == "POST" and form.is_valid():
         login(request, form.get_user())
+        messages.success(request, _("You have successfully logged in."))
+        return redirect(safe_next_url(request))
 
-        messages.success(
-            request,
-            _("You have successfully logged in."),
-        )
-
-        next_url = request.GET.get("next")
-        return redirect(next_url or "website:home")
-
-    return render(
-        request,
-        "accounts/login.html",
-        {"form": form},
-    )
+    return render(request, "accounts/login.html", {"form": form})
 
 
 def logout_view(request):
     if request.method == "POST":
         logout(request)
-
-        messages.success(
-            request,
-            _("You have successfully logged out."),
-        )
+        messages.success(request, _("You have successfully logged out."))
 
     return redirect("website:home")
 
 
 @login_required
 def password_change_view(request):
-    form = PasswordChangeForm(
-        user=request.user,
-        data=request.POST or None,
-    )
+    form = PasswordChangeForm(user=request.user, data=request.POST or None)
 
-    if request.method == "POST":
-        if form.is_valid():
-            user = form.save()
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)
+        messages.success(request, _("Password changed successfully."))
+        return redirect("website:home")
 
-            update_session_auth_hash(request, user)
-
-            messages.success(
-                request,
-                _("Your password was changed successfully."),
-            )
-
-            return redirect("website:home")
-
-        messages.error(
-            request,
-            _("Please correct the errors below."),
-        )
-
-    return render(
-        request,
-        "accounts/password_change.html",
-        {"form": form},
-    )
+    return render(request, "accounts/password_change.html", {"form": form})
 
 
 def forgot_password(request):
     form = ForgotPasswordForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        phone_number = form.cleaned_data["phone_number"]
+        phone = form.cleaned_data["phone_number"]
 
-        latest_otp = (
-            OtpCode.objects.filter(phone_number=phone_number)
-            .order_by("-date_time_created")
-            .first()
-        )
-
-        if (
-            latest_otp
-            and (
-                timezone.now() - latest_otp.date_time_created
-            ).total_seconds() < 120
-        ):
-            messages.error(
+        if not User.objects.filter(phone_number=phone).exists():
+            messages.success(
                 request,
-                _("Please wait a moment before requesting a new OTP."),
+                _("If the account exists, a verification code will be sent."),
             )
+            return render(request, "accounts/forgot_password.html", {"form": form})
 
-            return render(
-                request,
-                "accounts/forgot_password.html",
-                {"form": form},
-            )
+        if get_valid_otp(phone, "password_reset"):
+            messages.error(request, _("A code was already sent. Please wait."))
+            return render(request, "accounts/forgot_password.html", {"form": form})
 
-        create_otp(phone_number)
+        try:
+            sent = create_otp(phone, "password_reset")
+        except Exception:
+            messages.error(request, _("Could not send the verification code."))
+            return render(request, "accounts/forgot_password.html", {"form": form})
 
-        request.session["reset_phone"] = phone_number
+        if not sent:
+            messages.error(request, _("Please wait before requesting another code."))
+            return render(request, "accounts/forgot_password.html", {"form": form})
 
-        messages.success(
-            request,
-            _("A verification code has been sent to your phone number."),
-        )
+        request.session["reset_phone"] = phone
+        request.session.pop("reset_password_verified", None)
+        request.session.set_expiry(OTP_SESSION_SECONDS)
 
-        return redirect(
-            reverse("accounts:verify_code_forgot_password")
-        )
+        return redirect("accounts:verify_code_forgot_password")
 
-    return render(
-        request,
-        "accounts/forgot_password.html",
-        {"form": form},
-    )
-
-User = get_user_model()
+    return render(request, "accounts/forgot_password.html", {"form": form})
 
 
 def verify_code_forgot_password(request):
-    reset_phone = request.session.get("reset_phone")
+    phone = request.session.get("reset_phone")
 
-    if not reset_phone:
-        messages.error(
-            request,
-            _("Session expired. Please start over."),
-        )
+    if not phone:
+        messages.error(request, _("Session expired. Please start again."))
         return redirect("accounts:forgot_password")
 
     form = VerifyCodeForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            otp = get_valid_otp(phone, "password_reset")
 
-        otp = get_valid_otp(reset_phone)
+            if not verify_otp(otp, form.cleaned_data["code"]):
+                messages.error(request, _("Invalid or expired code."))
+                return redirect("accounts:verify_code_forgot_password")
 
-        if otp is None:
-            messages.error(
-                request,
-                _("The OTP code has expired. Please request a new one."),
-            )
-            return redirect("accounts:forgot_password")
-
-        if str(form.cleaned_data["code"]) != str(otp.code):
-            messages.error(
-                request,
-                _("The entered code is incorrect."),
-            )
-            return redirect("accounts:verify_code_forgot_password")
-
-        otp.delete()
+            otp.delete()
 
         request.session["reset_password_verified"] = True
-
-        messages.success(
-            request,
-            _("Code verified successfully."),
-        )
-
+        request.session["reset_verified_at"] = timezone.now().timestamp()
         return redirect("accounts:reset_password")
 
     return render(
@@ -347,46 +310,36 @@ def verify_code_forgot_password(request):
 
 
 def reset_password(request):
-    reset_phone = request.session.get("reset_phone")
+    phone = request.session.get("reset_phone")
     verified = request.session.get("reset_password_verified")
+    verified_at = request.session.get("reset_verified_at", 0)
 
-    if not reset_phone or not verified:
-        messages.error(
-            request,
-            _("Please start from the password recovery step."),
-        )
+    if (
+        not phone
+        or not verified
+        or timezone.now().timestamp() - verified_at > OTP_SESSION_SECONDS
+    ):
+        request.session.pop("reset_password_verified", None)
+        messages.error(request, _("Please verify your phone number again."))
         return redirect("accounts:forgot_password")
 
     form = ResetPasswordForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
+        user = User.objects.filter(phone_number=phone).first()
 
-        try:
-            user = User.objects.get(phone_number=reset_phone)
-        except User.DoesNotExist:
-            messages.error(
-                request,
-                _("User not found."),
-            )
+        if user is None:
+            request.session.flush()
             return redirect("accounts:forgot_password")
 
-        user.set_password(
-            form.cleaned_data["new_password1"]
-        )
+        user.set_password(form.cleaned_data["new_password1"])
         user.save(update_fields=["password"])
 
         request.session.pop("reset_phone", None)
         request.session.pop("reset_password_verified", None)
+        request.session.pop("reset_verified_at", None)
 
-        messages.success(
-            request,
-            _("Your password has been successfully changed."),
-        )
-
+        messages.success(request, _("Password changed successfully."))
         return redirect("accounts:login")
 
-    return render(
-        request,
-        "accounts/reset_password.html",
-        {"form": form},
-    )
+    return render(request, "accounts/reset_password.html", {"form": form})
