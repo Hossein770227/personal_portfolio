@@ -15,6 +15,7 @@ services:
       DATABASE_HOST: db
       DATABASE_PORT: ${DATABASE_PORT}
       DJANGO_SECRET_KEY: ${DOCKER_COMPOSE_DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DOCKER_COMPOSE_DJANGO_DEBUG}
     depends_on:
       db:
         condition: service_healthy
