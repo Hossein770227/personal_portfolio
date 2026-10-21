@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'accounts',
 
     'debug_toolbar',
+    'rosetta',
 ]
 
 MIDDLEWARE = [
