@@ -168,3 +168,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ]
+
+LIMO_SMS_URL= 'https://api.limosms.com/api/sendpatternmessage'
+
+API_KEY= env('DJANGO_LIMO_SMS_API_KEY')
