@@ -21,7 +21,8 @@ from debug_toolbar.toolbar import debug_toolbar_urls
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('accounts.urls')),
-    path('/', include('website.urls')),
+    path('', include('website.urls')),
     # rosetta
     path('rosetta/', include('rosetta.urls')),
+    path("i18n/", include("django.conf.urls.i18n")),
 ]+ debug_toolbar_urls()

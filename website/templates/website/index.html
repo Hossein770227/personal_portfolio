@@ -6,5 +6,19 @@
 {% endblock page_title %}
 
 {% block content %}
+
+{% load i18n %}
+
+
+  {% if user.is_authenticated %}
+  <h4>welcome {{ user.full_name}}</h4>
+  <P>you Register by {{user.phone_number}} number</P>
+  <form method="post" action="{% url 'accounts:logout' %}">
+    {% csrf_token %}
+    <button type="submit">logout</button>
+  </form>
+    {% else%}
+    <p><a href="{% url 'accounts:login'  %}"> login</a> <a href="{% url 'accounts:user_register'  %}">Register</a></p>
+  {% endif %}
   <p> home page</p>
 {% endblock content %}
