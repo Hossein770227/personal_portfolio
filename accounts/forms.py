@@ -11,6 +11,8 @@ from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.utils.translation import gettext_lazy as _
 
+from accounts.models import MyUser
+
 from .validator import validate_iranian_phone
 
 User = get_user_model()
@@ -20,7 +22,7 @@ class UserCreationForm(BaseUserCreationForm):
     """Django Admin user creation form."""
 
     class Meta:
-        model = User
+        model = MyUser
         fields = ("phone_number", "full_name")
 
     def clean_password2(self):
@@ -47,7 +49,7 @@ class UserChangeForm(BaseUserChangeForm):
     )
 
     class Meta:
-        model = User
+        model = MyUser
         fields = (
             "phone_number",
             "full_name",
@@ -61,7 +63,7 @@ class UserChangeForm(BaseUserChangeForm):
         phone_number = self.cleaned_data["phone_number"]
 
         if (
-            User.objects.filter(phone_number=phone_number)
+            MyUser.objects.filter(phone_number=phone_number)
             .exclude(pk=self.instance.pk)
             .exists()
         ):

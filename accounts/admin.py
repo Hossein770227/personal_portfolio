@@ -6,14 +6,20 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .forms import UserChangeForm, UserCreationForm
 from .models import MyUser, OtpCode
-
+from unfold.admin import ModelAdmin
+from unfold.forms import (
+    AdminPasswordChangeForm,
+    UserChangeForm as UnfoldUserChangeForm,
+    UserCreationForm as UnfoldUserCreationForm,
+)
 
 @admin.register(MyUser)
-class MyUserAdmin(BaseUserAdmin):
-    form = UserChangeForm
-    add_form = UserCreationForm
+class MyUserAdmin(BaseUserAdmin,ModelAdmin):
+    form = UnfoldUserChangeForm
+    add_form = UnfoldUserCreationForm
+    change_password_form = AdminPasswordChangeForm
+
 
     list_display = (
         "full_name",
@@ -64,7 +70,7 @@ class MyUserAdmin(BaseUserAdmin):
 
 
 @admin.register(OtpCode)
-class OtpCodeAdmin(admin.ModelAdmin):
+class OtpCodeAdmin(ModelAdmin):
     list_display = (
         "phone_number",
         "date_time_persian",
@@ -98,10 +104,14 @@ class OtpCodeAdmin(admin.ModelAdmin):
         return jdatetime.datetime.fromgregorian(
             datetime=obj.date_time_created
         ).strftime("%Y/%m/%d %H:%M:%S")
-
-    @admin.display(description=_("OTP status"))
+    
+    @admin.display(description=_("Expired"), boolean=True)
     def expiration_status(self, obj):
-        if timezone.now() >= obj.expire_time:
-            return _("Expired")
+        return timezone.now() >= obj.expire_time
+    
+    # @admin.display(description=_("OTP status"))
+    # def expiration_status(self, obj):
+    #     if timezone.now() >= obj.expire_time:
+    #         return _("Expired")
 
-        return _("Valid")
+    #     return _("Valid")
