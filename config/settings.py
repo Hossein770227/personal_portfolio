@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 import socket
 from environs import Env
+from django.contrib.messages import constants
+from django.utils.translation import gettext_lazy as _
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -52,6 +54,16 @@ INSTALLED_APPS = [
     'debug_toolbar',
     'rosetta',
 ]
+
+UNFOLD = {
+    "SITE_TITLE": "Ho3ein Portfolio",
+    "SITE_HEADER": _("Portfolio Admin"),
+    "SITE_SUBHEADER": _("Management Dashboard"),
+    "SITE_URL": "/",
+    "SITE_SYMBOL": "code",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -151,7 +163,14 @@ LANGUAGES = (
     ("fa", ("persian")),
 )
 
+# messages config
+MESSAGE_TAGS={
+    constants.ERROR:"danger",
+}
 
+LOCALE_PATHS = [
+    BASE_DIR, 'templates/locale',
+]
 
 # DJANGO_DEBUG
 if DEBUG:
