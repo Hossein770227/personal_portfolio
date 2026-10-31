@@ -9,4 +9,9 @@ def send_otp_code(phone_number, code):
     myobj = {'OtpId' :'593',
     'ReplaceToken' : message,
     'MobileNumber' : f'{phone_number}'}
-    x = requests.post(url, json = myobj, headers = {"ApiKey": settings.API_KEY})
+    x = requests.post(
+    url,
+    json=myobj,
+    headers={"ApiKey": settings.API_KEY},
+    )
+    

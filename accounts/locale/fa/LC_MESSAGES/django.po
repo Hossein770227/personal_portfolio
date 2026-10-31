@@ -8,8 +8,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 20:00+0330\n"
-"PO-Revision-Date: 2026-10-21 20:10+0330\n"
+"POT-Creation-Date: 2026-10-31 14:22+0330\n"
+"PO-Revision-Date: 2026-10-31 14:25+0330\n"
 "Last-Translator: Anonymous User <anonymous@user.tld>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -19,80 +19,76 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 "X-Translated-Using: django-rosetta 0.10.3\n"
 
-#: .\admin.py:35
+#: .\admin.py:41
 msgid "Permissions"
 msgstr "مجوزها"
 
-#: .\admin.py:44
+#: .\admin.py:50
 msgid "Important dates"
 msgstr "تاریخ‌های مهم"
 
-#: .\admin.py:93
+#: .\admin.py:99
 msgid "Date/Time (Persian)"
 msgstr "تاریخ/زمان (فارسی)"
 
-#: .\admin.py:102
-msgid "OTP status"
-msgstr "وضعیت OTP"
-
-#: .\admin.py:105
+#: .\admin.py:108
 msgid "Expired"
 msgstr "منقضی شده"
 
-#: .\admin.py:107
-msgid "Valid"
-msgstr "معتبر"
+#: .\apps.py:6
+msgid "accounts"
+msgstr "حساب های کاریری"
 
-#: .\forms.py:34 .\forms.py:114
+#: .\forms.py:36 .\forms.py:116
 msgid "Passwords do not match."
 msgstr "رمزهای عبور مطابقت ندارند."
 
-#: .\forms.py:45
+#: .\forms.py:47
 msgid "You can change the password using the password change form."
 msgstr ""
 "شما می‌توانید با استفاده از فرم تغییر رمز عبور، رمز عبور را تغییر دهید."
 
-#: .\forms.py:68 .\forms.py:102 .\views.py:136 .\views.py:192
+#: .\forms.py:70 .\forms.py:104 .\views.py:136 .\views.py:192
 msgid "This phone number already exists."
 msgstr "این شماره تلفن از قبل وجود دارد."
 
-#: .\forms.py:75
+#: .\forms.py:77
 msgid "Full name"
 msgstr "نام کامل"
 
-#: .\forms.py:81 .\forms.py:144 .\forms.py:185
+#: .\forms.py:83 .\forms.py:146 .\forms.py:187
 msgid "Phone number"
 msgstr "شماره تلفن"
 
-#: .\forms.py:87 .\forms.py:191
+#: .\forms.py:89 .\forms.py:193
 msgid "Password"
 msgstr "رمز عبور"
 
-#: .\forms.py:93
+#: .\forms.py:95
 msgid "Confirm password"
 msgstr "تأیید رمز عبو"
 
-#: .\forms.py:122
+#: .\forms.py:124
 msgid "Verification code"
 msgstr "کد تأیید"
 
-#: .\forms.py:129
+#: .\forms.py:131
 msgid "Enter a valid four-digit verification code."
 msgstr "یک کد تایید چهار رقمی معتبر وارد کنید."
 
-#: .\forms.py:152
+#: .\forms.py:154
 msgid "New password"
 msgstr "رمز عبور جدید"
 
-#: .\forms.py:158
+#: .\forms.py:160
 msgid "Confirm new password"
 msgstr "رمز عبور جدید را تأیید کنید"
 
-#: .\forms.py:175
+#: .\forms.py:177
 msgid "The passwords must match."
 msgstr "رمزهای عبور باید مطابقت داشته باشند."
 
-#: .\forms.py:211
+#: .\forms.py:213
 msgid "Invalid phone number or password."
 msgstr "رمزهای عبور باید مطابقت داشته باشند."
 
@@ -219,3 +215,9 @@ msgstr "جلسه منقضی شده است. لطفاً دوباره شروع کن
 #: .\views.py:323
 msgid "Please verify your phone number again."
 msgstr "لطفا شماره تلفن خود را دوباره تأیید کنید."
+
+#~ msgid "OTP status"
+#~ msgstr "وضعیت OTP"
+
+#~ msgid "Valid"
+#~ msgstr "معتبر"

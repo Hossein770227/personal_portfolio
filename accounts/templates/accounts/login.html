@@ -13,5 +13,10 @@
 
         <button type="submit">login</button>
     </form>
+    {% if user.is_authenticated %}
+        <a href="{% url 'accounts:change_password'  %}">change password</a>
+    {% else %}  
+        <a href="{% url 'accounts:forgot_password'  %}">forgat password</a>
+    {% endif %}
 {% endblock content %}
 
